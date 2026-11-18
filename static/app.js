@@ -54,7 +54,7 @@ function render() {
 async function loadTodos() {
   const result=await api('/api/todos'); data=result.todos; owner=result.role==='owner'; loggedIn=true;
   $('login').hidden=true; $('workspace').hidden=false; $('logout').hidden=false; $('financeNav').hidden=false;
-  $('addForm').hidden=!owner; $('newEntry').hidden=!owner; $('role').textContent=owner?'所有者 · 編集可能':'閲覧専用 · Todo / 家計簿'; render();
+  $('addForm').hidden=!owner; $('newEntry').hidden=!owner; $('role').textContent=owner?'所有者 · 編集可能':''; render();
 }
 async function loadFinance() {
   const month=$('month').value; if(!month) return;
