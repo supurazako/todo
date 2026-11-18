@@ -1,0 +1,166 @@
+"""Single-owner TODO web application; shares Chronos' SQLite table."""
+import hashlib
+import hmac
+import os
+import secrets
+import sqlite3
+import time
+from datetime import timedelta
+from functools import wraps
+from pathlib import Path
+
+from flask import Flask, abort, jsonify, request, session
+
+
+def create_app(config=None):
+    app = Flask(__name__, static_folder='static', static_url_path='/static')
+    app.config.update(SECRET_KEY=os.environ.get('TODO_SESSION_SECRET'),
+        OWNER_KEY=os.environ.get('TODO_OWNER_KEY'), VIEWER_KEY=os.environ.get('TODO_VIEWER_KEY'),
+        DATABASE=os.environ.get('TODO_DATABASE'), PUBLIC_ORIGIN='https://task.supurazako.com',
+        SESSION_COOKIE_SECURE=True, SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Strict',
+        PERMANENT_SESSION_LIFETIME=timedelta(days=7), MAX_CONTENT_LENGTH=8192)
+    if config:
+        app.config.update(config)
+    for name in ('SECRET_KEY', 'OWNER_KEY', 'VIEWER_KEY', 'DATABASE'):
+        if not app.config.get(name):
+            raise ValueError(f'{name} is required')
+    if app.config['OWNER_KEY'] == app.config['VIEWER_KEY']:
+        raise ValueError('Owner and viewer keys must differ')
+    # Key changes invalidate all previous sessions without storing the actual keys in cookies.
+    generation = hmac.new(str(app.config['SECRET_KEY']).encode(),
+        (app.config['OWNER_KEY'] + '\0' + app.config['VIEWER_KEY']).encode(), hashlib.sha256).hexdigest()
+    failures = []
+
+    def db():
+        con = sqlite3.connect(app.config['DATABASE'], timeout=15)
+        con.row_factory = sqlite3.Row
+        return con
+
+    # Do not create an empty replacement if the configured shared store is missing.
+    if not Path(app.config['DATABASE']).is_file():
+        raise ValueError('Existing TODO database is required')
+    with db() as con:
+        con.execute('SELECT todo_id, task, status, created_at, completed_at FROM todo_items LIMIT 0')
+
+    @app.before_request
+    def guard():
+        if request.method not in ('GET', 'HEAD', 'OPTIONS'):
+            if request.headers.get('Origin') != app.config['PUBLIC_ORIGIN']:
+                abort(403)
+            if not request.is_json:
+                abort(415)
+
+    @app.after_request
+    def headers(response):
+        response.headers['Cache-Control'] = 'no-store'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['Referrer-Policy'] = 'no-referrer'
+        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000'
+        return response
+
+    def auth(owner=False):
+        def decorate(fn):
+            @wraps(fn)
+            def wrapped(*args, **kwargs):
+                if session.get('generation') != generation or session.get('role') not in ('owner', 'viewer'):
+                    abort(401)
+                if owner and session['role'] != 'owner':
+                    abort(403)
+                return fn(*args, **kwargs)
+            return wrapped
+        return decorate
+
+    def body():
+        value = request.get_json()
+        if not isinstance(value, dict):
+            abort(400)
+        return value
+
+    def task_text(value):
+        if not isinstance(value, str) or not value.strip() or len(value.strip()) > 500:
+            abort(400)
+        return value.strip()
+
+    @app.get('/')
+    def index():
+        return app.send_static_file('index.html')
+
+    @app.post('/api/login')
+    def login():
+        now = time.monotonic()
+        failures[:] = [t for t in failures if now - t < 60]
+        if len(failures) >= 30:
+            abort(429)
+        key = body().get('key')
+        if not isinstance(key, str) or len(key) > 1024:
+            abort(400)
+        role = None
+        for candidate, field in [('owner', 'OWNER_KEY'), ('viewer', 'VIEWER_KEY')]:
+            if hmac.compare_digest(key.encode(), app.config[field].encode()):
+                role = candidate
+        if not role:
+            failures.append(now)
+            abort(401)
+        session.clear()
+        session.update(role=role, generation=generation)
+        session.permanent = True
+        return jsonify(role=role)
+
+    @app.post('/api/logout')
+    def logout():
+        session.clear()
+        return jsonify(ok=True)
+
+    @app.get('/api/todos')
+    @auth()
+    def listing():
+        with db() as con:
+            rows = con.execute("SELECT todo_id AS id, task, status, created_at, completed_at FROM todo_items ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, todo_id").fetchall()
+        return jsonify(role=session['role'], todos=[dict(r) for r in rows])
+
+    @app.post('/api/todos')
+    @auth(True)
+    def add():
+        task = task_text(body().get('task'))
+        with db() as con:
+            cursor = con.execute('INSERT INTO todo_items(task) VALUES (?)', (task,))
+            ident = cursor.lastrowid
+        return jsonify(id=ident), 201
+
+    @app.patch('/api/todos/<int:ident>')
+    @auth(True)
+    def update(ident):
+        data = body()
+        if not data or set(data) - {'task', 'status'}:
+            abort(400)
+        values, fields = [], []
+        if 'task' in data:
+            fields.append('task = ?')
+            values.append(task_text(data['task']))
+        if 'status' in data:
+            if data['status'] not in ('open', 'completed'):
+                abort(400)
+            fields.extend(['status = ?', "completed_at = CASE WHEN ? = 'completed' THEN COALESCE(completed_at, CURRENT_TIMESTAMP) ELSE NULL END"])
+            values.extend([data['status'], data['status']])
+        with db() as con:
+            cur = con.execute('UPDATE todo_items SET ' + ', '.join(fields) + ' WHERE todo_id = ?', [*values, ident])
+            if not cur.rowcount:
+                abort(404)
+        return jsonify(ok=True)
+
+    @app.delete('/api/todos/<int:ident>')
+    @auth(True)
+    def delete(ident):
+        with db() as con:
+            cur = con.execute('DELETE FROM todo_items WHERE todo_id = ?', (ident,))
+            if not cur.rowcount:
+                abort(404)
+        return jsonify(ok=True)
+
+    return app
+
+
+if __name__ == '__main__':
+    from waitress import serve
+    serve(create_app(), host='127.0.0.1', port=int(os.environ.get('TODO_PORT', '8786')), threads=4)
