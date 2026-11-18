@@ -68,6 +68,7 @@ def create_app(config=None):
     @app.after_request
     def headers(response):
         response.headers['Cache-Control'] = 'no-store'
+        response.headers['X-Robots-Tag'] = 'noindex, nofollow, noarchive'
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Referrer-Policy'] = 'no-referrer'
         response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
@@ -78,6 +79,8 @@ def create_app(config=None):
         def decorate(fn):
             @wraps(fn)
             def wrapped(*args, **kwargs):
+                if not owner:
+                    return fn(*args, **kwargs)
                 if session.get('generation') != generation or session.get('role') not in ('owner', 'viewer'):
                     abort(401)
                 if owner and session['role'] != 'owner':
@@ -132,7 +135,8 @@ def create_app(config=None):
     def listing():
         with db() as con:
             rows = con.execute("SELECT todo_id AS id, task, status, created_at, completed_at FROM todo_items ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, todo_id").fetchall()
-        return jsonify(role=session['role'], todos=[dict(r) for r in rows])
+        role = session.get('role') if session.get('generation') == generation else 'viewer'
+        return jsonify(role=role or 'viewer', todos=[dict(r) for r in rows])
 
     @app.post('/api/todos')
     @auth(True)

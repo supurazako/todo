@@ -20,7 +20,8 @@ def login(client, key='owner-key'):
 
 def test_anonymous(client):
     assert client.get('/').status_code == 200
-    assert client.get('/api/todos').status_code == 401
+    assert client.get('/api/todos').status_code == 200
+    assert client.get('/api/todos').json['role'] == 'viewer'
     assert client.post('/api/todos', json={'task':'x'}, headers=ORIGIN).status_code == 401
 
 def test_owner_crud_and_persistence(client, settings):
@@ -62,9 +63,11 @@ def test_cookie_logout_rotation(client, settings):
     old_cookie = client.get_cookie('session').value
     changed = create_app({**settings,'VIEWER_KEY':'rotated'}).test_client()
     changed.set_cookie('session',old_cookie)
-    assert changed.get('/api/todos').status_code == 401
+    assert changed.get('/api/todos').json['role'] == 'viewer'
+    assert changed.post('/api/todos', json={'task':'denied'}, headers=ORIGIN).status_code == 401
     client.post('/api/logout',json={},headers=ORIGIN)
-    assert client.get('/api/todos').status_code == 401
+    assert client.get('/api/todos').json['role'] == 'viewer'
+    assert client.post('/api/todos', json={'task':'denied'}, headers=ORIGIN).status_code == 401
 
 def test_rate_limit(client):
     for _ in range(30):
@@ -78,4 +81,5 @@ def test_fail_closed(settings):
 def test_security_headers(client):
     r=client.get('/')
     assert r.headers['Cache-Control']=='no-store'
+    assert r.headers['X-Robots-Tag']=='noindex, nofollow, noarchive'
     assert "frame-ancestors 'none'" in r.headers['Content-Security-Policy']

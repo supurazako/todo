@@ -53,7 +53,7 @@ function render() {
 }
 async function loadTodos() {
   const result=await api('/api/todos'); data=result.todos; owner=result.role==='owner'; loggedIn=true;
-  $('login').hidden=true; $('workspace').hidden=false; $('logout').hidden=false; $('financeNav').hidden=false;
+  $('login').hidden=true; $('workspace').hidden=false; $('logout').hidden=!owner; $('ownerLogin').hidden=owner; $('financeNav').hidden=false;
   $('addForm').hidden=!owner; $('newEntry').hidden=!owner; $('role').textContent=''; render();
 }
 async function loadFinance() {
@@ -82,7 +82,9 @@ $('loginForm').onsubmit=async event=>{event.preventDefault();const submit=event.
 $('addForm').onsubmit=async event=>{event.preventDefault();const submit=event.submitter;submit.disabled=true;try{await api('/api/todos','POST',{task:$('task').value});$('task').value='';$('message').textContent='';await loadTodos();}catch(e){report(e);}finally{submit.disabled=false;}};
 $('taskEditForm').onsubmit=async event=>{event.preventDefault();const submit=event.submitter;submit.disabled=true;try{await api(`/api/todos/${editTaskId}`,'PATCH',{task:$('editTask').value});$('taskDialog').close();await loadTodos();}catch(e){$('taskError').textContent=e.message;}finally{submit.disabled=false;}};
 $('entryForm').onsubmit=async event=>{event.preventDefault();$('saveEntry').disabled=true;try{const payload={kind:$('kind').value,title:$('entryTitle').value,amount:Number($('amount').value),occurred_on:$('occurred').value};await api(editId===null?'/api/finance':`/api/finance/${editId}`,editId===null?'POST':'PUT',payload);$('month').value=payload.occurred_on.slice(0,7);$('entryDialog').close();await loadFinance();}catch(e){$('entryError').textContent=e.message;}finally{$('saveEntry').disabled=false;}};
-$('logout').onclick=async()=>{try{await api('/api/logout','POST',{});signedOut();closeMenu();}catch(e){report(e);}};
+$('logout').onclick=async()=>{try{await api('/api/logout','POST',{});signedOut();closeMenu();await loadTodos();await route();}catch(e){report(e);}};
+$('ownerLogin').onclick=()=>{closeMenu();$('login').hidden=false;$('workspace').hidden=true;$('key').focus();};
+$('cancelLogin').onclick=()=>{ $('message').textContent=''; loadTodos().then(route).catch(report); };
 $('openTab').onclick=()=>{filter='open';render();}; $('doneTab').onclick=()=>{filter='completed';render();};
 $('newEntry').onclick=()=>openEntry();
 $('closeEntry').onclick=$('cancelEntry').onclick=()=>$('entryDialog').close(); $('cancelTask').onclick=()=>$('taskDialog').close();

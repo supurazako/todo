@@ -1,5 +1,12 @@
 # TODO Web — 初版要件
 
+## Updated access policy
+- Owner explicitly approved public, login-free access to all TODOs and finance entries/summaries.
+- Writes remain owner-authenticated; no anonymous create/edit/complete/delete.
+- Owner login is optional, reached from sidebar; logout restores public viewing.
+- Send noindex/nofollow/noarchive directives without claiming privacy or access control.
+- These updates supersede prior requirements for viewer keys and anonymous read denial below.
+
 ## 合意済み
 - URL: https://task.supurazako.com
 - Repository: supurazako/todo (private)

@@ -48,7 +48,7 @@ def test_month_validation(client,month):
     assert client.get('/api/finance',query_string={'month':month}).status_code==400
 
 def test_finance_anonymous_and_origin(client):
-    assert client.get('/api/finance?month=2026-11').status_code==401
+    assert client.get('/api/finance?month=2026-11').status_code==200
     assert client.post('/api/finance',json=ENTRY,headers=ORIGIN).status_code==401
     login(client)
     assert client.post('/api/finance',json=ENTRY,headers={'Origin':'https://evil.example'}).status_code==403

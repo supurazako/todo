@@ -1,4 +1,13 @@
 # Tasks
+ 
+## Current access policy (supersedes historical viewer-key descriptions below)
+
+TODOs and all finance records/summaries are publicly readable without login.
+Only writes require the owner key; use the sidebar's owner login button to edit.
+Logout returns to public read-only mode. The legacy viewer key remains accepted
+for compatibility but is no longer needed and does not limit public access.
+All responses request `noindex, nofollow, noarchive`; this is not access control
+and cannot prevent copying, forwarding or noncompliant crawlers.
 
 Minimal single-owner TODO and household finance web app at https://task.supurazako.com.
 Flask + Waitress + SQLite; browser JavaScript has no build step.
