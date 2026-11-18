@@ -8,7 +8,9 @@
 - Viewers: one shared viewer key, read all open and completed TODOs; no writes.
 - Separate owner and viewer keys; keys never in URLs; revocable sessions after key rotation.
 - Persistent storage shared with the existing 08:00 Asia/Tokyo Discord reminder.
-- Responsive UI, white background, restrained blue accents, system fonts, generous whitespace, clear hierarchy; inspired by Apple HIG and Keynote, not a replica.
+- Responsive UI, white background, lime accents, rounded inset sidebar and finance summary cards adapted from tokuzou0829/my-todo-app (see DESIGN_SOURCE.md). This supersedes the initial blue Apple-inspired visual direction.
+- Household finance: JPY income/expense entries (date, description, positive integer amount), create/edit/delete, monthly income/expense/net totals.
+- Existing viewer key reads all TODOs and all finance records; only the owner can edit. No separate finance authentication.
 - Keyboard access, visible focus, readable contrast; minimal motion.
 - Out of scope: due dates, priority, recurrence, categories, per-item visibility, individual viewer accounts.
 

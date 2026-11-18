@@ -1,7 +1,19 @@
 # Tasks
 
-Minimal single-owner TODO web app at https://task.supurazako.com.
+Minimal single-owner TODO and household finance web app at https://task.supurazako.com.
 Flask + Waitress + SQLite; browser JavaScript has no build step.
+
+## Features and design
+
+- Owner: TODO CRUD and JPY income/expense CRUD with date and description.
+- Monthly income, expense and net totals. Net is not a bank-account balance.
+- Existing shared viewer key reads **both TODOs and all finance records**, including summaries;
+  only the owner can mutate either resource. Anonymous visitors see neither.
+- UI adapted from tokuzou0829/my-todo-app; provenance and reported permission are in DESIGN_SOURCE.md.
+- No new runtime dependencies or separate database server. Startup adds only
+  `finance_entries` and its index to the existing SQLite store, leaving TODOs unchanged.
+- A private consistent pre-migration backup was taken at `~/.config/chronos-todo/pre-finance.db`.
+- Existing keys continue to work. Rotate the viewer key if its holders should no longer see finance.
 
 ## Install and test
 
@@ -49,3 +61,11 @@ do not delete existing data or commit backups.
 `smoke_browser.py` is an opt-in deployment test requiring Playwright/Chromium and
 local deployment secrets. It checks both roles over public HTTPS without modifying TODOs.
 Unit tests cover CRUD and reminder-query compatibility using an isolated temporary database.
+
+Optional browser checks:
+```sh
+.venv/bin/pip install playwright
+.venv/bin/playwright install chromium
+.venv/bin/python browser_crud.py  # isolated database; complete CRUD test
+.venv/bin/python smoke_browser.py  # public deployment; no data mutations
+```

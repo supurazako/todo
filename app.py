@@ -2,10 +2,11 @@
 import hashlib
 import hmac
 import os
-import secrets
+import re
 import sqlite3
 import time
-from datetime import timedelta
+from contextlib import contextmanager
+from datetime import date, timedelta
 from functools import wraps
 from pathlib import Path
 
@@ -31,16 +32,30 @@ def create_app(config=None):
         (app.config['OWNER_KEY'] + '\0' + app.config['VIEWER_KEY']).encode(), hashlib.sha256).hexdigest()
     failures = []
 
+    @contextmanager
     def db():
         con = sqlite3.connect(app.config['DATABASE'], timeout=15)
         con.row_factory = sqlite3.Row
-        return con
+        try:
+            with con:
+                yield con
+        finally:
+            con.close()
 
     # Do not create an empty replacement if the configured shared store is missing.
     if not Path(app.config['DATABASE']).is_file():
         raise ValueError('Existing TODO database is required')
     with db() as con:
         con.execute('SELECT todo_id, task, status, created_at, completed_at FROM todo_items LIMIT 0')
+        con.execute('''CREATE TABLE IF NOT EXISTS finance_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL CHECK(kind IN ('income','expense')),
+            title TEXT NOT NULL,
+            amount INTEGER NOT NULL CHECK(amount > 0 AND amount <= 1000000000),
+            occurred_on TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )''')
+        con.execute('CREATE INDEX IF NOT EXISTS finance_by_date ON finance_entries(occurred_on, id)')
 
     @app.before_request
     def guard():
@@ -154,6 +169,70 @@ def create_app(config=None):
     def delete(ident):
         with db() as con:
             cur = con.execute('DELETE FROM todo_items WHERE todo_id = ?', (ident,))
+            if not cur.rowcount:
+                abort(404)
+        return jsonify(ok=True)
+
+    def finance_values(data):
+        if set(data) != {'kind', 'title', 'amount', 'occurred_on'}:
+            abort(400)
+        kind, amount, occurred = data['kind'], data['amount'], data['occurred_on']
+        if kind not in ('income', 'expense'):
+            abort(400)
+        if type(amount) is not int or not 1 <= amount <= 1_000_000_000:
+            abort(400)
+        if not isinstance(occurred, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', occurred):
+            abort(400)
+        try:
+            date.fromisoformat(occurred)
+        except ValueError:
+            abort(400)
+        return kind, task_text(data['title']), amount, occurred
+
+    @app.get('/api/finance')
+    @auth()
+    def finance_list():
+        month = request.args.get('month', '')
+        if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', month):
+            abort(400)
+        try:
+            date.fromisoformat(month + '-01')
+        except ValueError:
+            abort(400)
+        with db() as con:
+            rows = [dict(r) for r in con.execute(
+                'SELECT id, kind, title, amount, occurred_on FROM finance_entries '
+                'WHERE occurred_on >= ? AND occurred_on <= ? ORDER BY occurred_on DESC, id DESC',
+                (month + '-01', month + '-31')).fetchall()]
+        income = sum(r['amount'] for r in rows if r['kind'] == 'income')
+        expense = sum(r['amount'] for r in rows if r['kind'] == 'expense')
+        return jsonify(entries=rows, month=month, currency='JPY',
+                       summary={'income': income, 'expense': expense, 'net': income - expense})
+
+    @app.post('/api/finance')
+    @auth(True)
+    def finance_add():
+        values = finance_values(body())
+        with db() as con:
+            cur = con.execute('INSERT INTO finance_entries(kind,title,amount,occurred_on) VALUES (?,?,?,?)', values)
+            ident = cur.lastrowid
+        return jsonify(id=ident), 201
+
+    @app.put('/api/finance/<int:ident>')
+    @auth(True)
+    def finance_update(ident):
+        values = finance_values(body())
+        with db() as con:
+            cur = con.execute('UPDATE finance_entries SET kind=?, title=?, amount=?, occurred_on=? WHERE id=?', (*values, ident))
+            if not cur.rowcount:
+                abort(404)
+        return jsonify(ok=True)
+
+    @app.delete('/api/finance/<int:ident>')
+    @auth(True)
+    def finance_delete(ident):
+        with db() as con:
+            cur = con.execute('DELETE FROM finance_entries WHERE id=?', (ident,))
             if not cur.rowcount:
                 abort(404)
         return jsonify(ok=True)
