@@ -26,10 +26,11 @@ function button(label, action, className='') {
 function closeMenu() { $('sidebar').classList.remove('open'); $('menu').setAttribute('aria-expanded','false'); }
 async function route() {
   closeMenu(); if (!loggedIn) return;
-  const finance = location.hash === '#finance';
-  $('todoView').hidden = finance; $('financeView').hidden = !finance;
-  $('todoNav').setAttribute('aria-current',finance ? 'false' : 'page'); $('financeNav').setAttribute('aria-current',finance ? 'page' : 'false');
+  const finance = location.hash === '#finance', books = location.hash === '#books';
+  $('todoView').hidden = finance || books; $('financeView').hidden = !finance; $('booksView').hidden = !books;
+  for (const [id, active] of [['todoNav',!finance&&!books],['financeNav',finance],['booksNav',books]]) $(id).setAttribute('aria-current',active?'page':'false');
   if (finance) await loadFinance();
+  if (books) await loadBooks();
 }
 function render() {
   $('list').replaceChildren();
@@ -73,6 +74,17 @@ async function loadFinance() {
     $('entries').append(li);
   }
 }
+async function loadBooks() {
+  $('books').replaceChildren(); $('booksEmpty').hidden=true;
+  const result=await api('/api/books');
+  $('bookCount').textContent=`${result.books.length} 冊`;
+  $('booksEmpty').hidden=result.books.length!==0;
+  for(const item of result.books) {
+    const li=document.createElement('li'), body=document.createElement('div'), title=document.createElement('strong'), meta=document.createElement('small');
+    body.className='entrybody'; title.textContent=item.title; meta.textContent=`${item.finished_on} · ${item.author}`;
+    body.append(title,meta); li.append(body); $('books').append(li);
+  }
+}
 function openEntry(item=null) {
   if(!owner) return;
   editId=item?.id??null; $('entryHeading').textContent=item?'収支を編集':'収支を記録';
@@ -83,7 +95,7 @@ $('addForm').onsubmit=async event=>{event.preventDefault();const submit=event.su
 $('taskEditForm').onsubmit=async event=>{event.preventDefault();const submit=event.submitter;submit.disabled=true;try{await api(`/api/todos/${editTaskId}`,'PATCH',{task:$('editTask').value});$('taskDialog').close();await loadTodos();}catch(e){$('taskError').textContent=e.message;}finally{submit.disabled=false;}};
 $('entryForm').onsubmit=async event=>{event.preventDefault();$('saveEntry').disabled=true;try{const payload={kind:$('kind').value,title:$('entryTitle').value,amount:Number($('amount').value),occurred_on:$('occurred').value};await api(editId===null?'/api/finance':`/api/finance/${editId}`,editId===null?'POST':'PUT',payload);$('month').value=payload.occurred_on.slice(0,7);$('entryDialog').close();await loadFinance();}catch(e){$('entryError').textContent=e.message;}finally{$('saveEntry').disabled=false;}};
 $('logout').onclick=async()=>{try{await api('/api/logout','POST',{});signedOut();closeMenu();await loadTodos();await route();}catch(e){report(e);}};
-$('ownerLogin').onclick=()=>{closeMenu();$('login').hidden=false;$('workspace').hidden=true;$('key').focus();};
+$('ownerLogin').onclick=()=>{closeMenu();$('login').hidden=false;$('workspace').hidden=true;$('booksView').hidden=true;$('key').focus();};
 $('cancelLogin').onclick=()=>{ $('message').textContent=''; loadTodos().then(route).catch(report); };
 $('openTab').onclick=()=>{filter='open';render();}; $('doneTab').onclick=()=>{filter='completed';render();};
 $('newEntry').onclick=()=>openEntry();

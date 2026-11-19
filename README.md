@@ -1,4 +1,14 @@
 # Tasks
+
+## Reading log
+
+Public list: `/#books`, API: `GET /api/books`. Fields are finished_on (YYYY-MM-DD),
+title and author. Sorted by finished date descending, then record ID descending;
+re-reads are separate records. Browser has no reading write endpoint or edit controls.
+Discord registration uses the owner-only `reading_manage` bot tool sharing the
+`reading_books` SQLite table. Bot deployment requires approval of proposal
+`82ec266748d247db9da8116e4217a966`; the website can be deployed independently.
+Never invent missing dates/titles/authors; ask the owner about ambiguity.
  
 ## Current access policy (supersedes historical viewer-key descriptions below)
 

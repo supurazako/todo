@@ -56,6 +56,14 @@ def create_app(config=None):
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )''')
         con.execute('CREATE INDEX IF NOT EXISTS finance_by_date ON finance_entries(occurred_on, id)')
+        con.execute('''CREATE TABLE IF NOT EXISTS reading_books (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            finished_on TEXT NOT NULL,
+            title TEXT NOT NULL,
+            author TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )''')
+        con.execute('CREATE INDEX IF NOT EXISTS reading_by_date ON reading_books(finished_on, id)')
 
     @app.before_request
     def guard():
@@ -240,6 +248,12 @@ def create_app(config=None):
             if not cur.rowcount:
                 abort(404)
         return jsonify(ok=True)
+
+    @app.get('/api/books')
+    def books_list():
+        with db() as con:
+            rows = con.execute('SELECT id, finished_on, title, author FROM reading_books ORDER BY finished_on DESC, id DESC').fetchall()
+        return jsonify(books=[dict(row) for row in rows])
 
     return app
 

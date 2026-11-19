@@ -33,6 +33,13 @@ with sync_playwright() as p:
             assert page.locator('#login').is_hidden()
             expect(page.locator('#newEntry')).to_be_hidden()
         assert not errors,errors
-        print(f'{role}: HTTPS public read, role controls, desktop/mobile layout, noindex PASS')
+        page.goto('https://task.supurazako.com/#books')
+        page.locator('#booksView').wait_for(state='visible')
+        expect(page.locator('#bookCount')).to_contain_text('冊')
+        assert page.locator('#books button').count()==0
+        page.set_viewport_size({'width':390,'height':844})
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        assert not errors,errors
+        print(f'{role}: public reading page and layout PASS')
         context.close()
     browser.close()
